@@ -1,5 +1,7 @@
 import random
-from kanji_alive_connection import get_kanji_info
+from app_helpers.kanji_alive_connection import get_kanji_info
+from random import randint
+
 
 meaning_list = ["day, sun", "month, moon", "fire", "water", "tree, wood", "gold, money", "earth, soil", "person", "child", "woman, female", "man, male", "mountain", "river", "rice field", "sky, empty", "rain", "flower", "dog", "cat", "fish", "car, vehicle", "electricity", "study, learning", "school", "ahead, previous", "life, birth", "friend", "country", "time, hour", "talk, speak", "eat, food", "drink", "see, look", "hear, listen", "read", "write", "go, carry out", "come", "exit, go out", "enter, insert", "stand, rise", "rest", "buy", "sell", "think", "know", "what", "new", "long, leader"]
 
@@ -92,8 +94,16 @@ def generate_reading_to_kanji_quiz():
 #     else:
 #         raise HTTPException(400, "Invalid quiz type")
 
-
+def generate_random_quiz():
+    number = randint(1,3)
+    match number:
+        case 1:
+            generate_meaning_quiz()
+        case 2:
+            generate_reading_quiz()
+        case 3:
+            generate_reading_to_kanji_quiz()
 
 # generate_meaning_quiz()　＃checked
 # generate_reading_quiz()  #checked
-# generate_reading_to_kanji_quiz() #checked
+generate_reading_to_kanji_quiz() #checked
