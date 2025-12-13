@@ -1,6 +1,12 @@
 bitstring~=4.3.1
 jaconv~=0.4.0
 pandas
-Pillow
+Pillow~=11.1.0
 tqdm
 torch~=2.8.0
+numpy~=2.3.4
+streamlit~=1.51.0
+scikit-image~=0.25.2
+requests~=2.32.3
+torchvision~=0.23.0
+torchcam~=0.4.1

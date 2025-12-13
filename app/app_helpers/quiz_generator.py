@@ -13,7 +13,7 @@ kanji_list = ["日", "月", "火", "水", "木", "金", "土", "人", "子", "�
 
 
 
-target_kanji = '安'
+target_kanji = '私'
 kanji_info_json = get_kanji_info(target_kanji)
 meaning = kanji_info_json["kanji"]["meaning"]["english"]
 onyomi_str = kanji_info_json["kanji"]["onyomi"]["katakana"]
@@ -98,11 +98,12 @@ def generate_random_quiz():
     number = randint(1,3)
     match number:
         case 1:
-            generate_meaning_quiz()
+            return generate_meaning_quiz()
         case 2:
-            generate_reading_quiz()
+            return generate_reading_quiz()
         case 3:
-            generate_reading_to_kanji_quiz()
+            return generate_reading_to_kanji_quiz()
+
 
 # generate_meaning_quiz()　＃checked
 # generate_reading_quiz()  #checked

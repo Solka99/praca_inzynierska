@@ -7,6 +7,9 @@ import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 import pandas as pd
 from pathlib import Path
+import json
+# from user_accuracy import preprocess_kanji
+from app_helpers.kanji_alive_connection import get_kanji_info, show_kanji
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,7 +46,7 @@ class CNN_1(nn.Module):
 
 def load_labels():
 
-    path_to_labels = Path().resolve().parents[0] / "data" / "ETL8G" / "ETL8G_01_unpack" / "meta.csv"
+    path_to_labels = Path().resolve() / "data" / "ETL8G" / "ETL8G_01_unpack" / "meta.csv"
     labels_df = pd.read_csv(path_to_labels)
 
     labels = labels_df["char"].tolist()
@@ -57,7 +60,6 @@ def load_labels():
 
     all_labels.extend(labels_copy[:956])
     return all_labels
-
 
 # --- KONFIG (dostosuj) ---
 MODEL_PATH = "C:\\Users\\alicj\\PycharmProjects\\KanjiRecognitionModel\\best_model.pt"   # ścieżka do Twojego modelu
@@ -105,6 +107,28 @@ def predict(model, img_pil):
         # kanji = CLASS_TO_KANJI[idx] if idx < len(CLASS_TO_KANJI) else f"cls_{idx}"
         return kanji_list, probs_list
 
+
+def save_kanji_to_json(kanji):
+    print(kanji)
+    print(type(kanji))
+    FILE_PATH = "C:\\Users\\alicj\\PycharmProjects\\KanjiRecognitionModel\\app\\saved_kanji.json"
+    data = json.load(open(FILE_PATH))
+    print(type(data['saved_kanji']))
+    data['saved_kanji'] = data['saved_kanji'].append(kanji)
+    print("data", data)
+    print('in')
+
+    try:
+        print('ala')
+        with open(FILE_PATH, "w") as f:
+            json.dump(data, f)
+            print('saved')
+
+    except FileNotFoundError:
+        print("Error: The file 'data.json' was not found.")
+
+
+
 def main():
     st.set_page_config(page_title="Kanji — minimal demo", page_icon="🈶")
     st.title("Rysuj znak i rozpoznaj")
@@ -114,7 +138,7 @@ def main():
     # Płótno do rysowania
     canvas = st_canvas(
         fill_color="#0935b8",
-        stroke_width=8,
+        stroke_width=4,
         stroke_color="#000000",
         background_color="#FFFFFF",
         height=256,
@@ -122,15 +146,33 @@ def main():
         drawing_mode="freedraw",
         key="canvas",
     )
-
-    # Gdy coś narysowane — zamieniamy na PIL
-    if canvas.image_data is not None and st.button("Rozpoznaj"):
+    if np.any(canvas.image_data != 0) and st.button("Rozpoznaj"):
         # canvas.image_data: (H,W,4) RGBA -> bierzemy RGB
         img = Image.fromarray(canvas.image_data[:, :, :3].astype("uint8"))
         kanji_list, prob_list = predict(model, img)
         for k,p in zip(kanji_list, prob_list):
             st.success(f"Rozpoznano: **{k}** (pewność {p:.2f})")
         st.image(img, caption="Twój rysunek", width=128)
+
+
+        print(prob_list[0])
+        data = get_kanji_info(kanji_list[0])
+        show_kanji(data)
+        # st.json(data)  # szybki podgląd całej odpowiedz
+
+
+        # preprocess_kanji(img)
+
+    if st.button("💾 Zapisz znak"):
+        st.write('kliknięte')
+        print('klikniete')
+        #użytkownik jest proszony o wybranie kanji z 3 rozpoznanych opcji
+        save_kanji_to_json('愛')
+        st.success(f"Znak został zapisany!")
+        print('jej')
+
+
+
 
 if __name__ == "__main__":
     main()
