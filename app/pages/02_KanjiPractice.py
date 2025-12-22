@@ -3,7 +3,9 @@ from streamlit_drawable_canvas import st_canvas
 import numpy as np
 from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
-
+import pandas as pd
+from pathlib import Path
+import os
 from kanji_evaluation import evaluate_kanji, load_image_as_np
 
 
@@ -49,28 +51,64 @@ st.title("✏️ Kanji Practice – Ćwiczenie pisania znaków")
 
 st.write("""
 Ten moduł pozwala ćwiczyć ręczne odrysowywanie znaków kanji.
-Tłem obszaru rysowania jest **delikatnie wyszarzony wzór (ghost kanji)**.
 Po narysowaniu znaku możesz uzyskać ocenę opartą na metrykach podobieństwa.
 """)
 
 # --------------------------
 # Wybór kanji
 # --------------------------
+path_to_labels = Path().resolve()/ "data" / "ETL8G"/ "ETL8G_01_unpack"/"meta.csv"
+labels_df = pd.read_csv(path_to_labels)
+labels = labels_df["char"]
+labels = labels[:956].tolist()
 
-kanji_list = ["木", "日", "人", "大", "水", "山", "口", "心"]  # przykład — dodaj własne
-kanji_selected = st.selectbox("Wybierz znak do ćwiczenia:", kanji_list)
+def create_path_label_list():
+    path_label_list = []
+    etl_dir = Path().resolve() / "data" / "ETL8G"
+    for folder in os.listdir(etl_dir):
+        if "unpack" in folder:
+            folder_path = os.path.join(etl_dir, folder)
 
-template_path = "app/test_images/ushi_template.png"
+            # go through each png in folder
+            for fname in os.listdir(folder_path):
+                if fname.endswith(".png"):
+                    fpath = os.path.join(folder_path, fname)
+                    # take filename without extension
+                    idx = int(os.path.splitext(fname)[0])
+                    # compute label
+                    label = idx % 956
+                    path_label_list.append((fpath, label))
+    return path_label_list
+
+def find_path_to_image_by_index():
+    path_to_templates= Path().resolve() / "data" / "ETL8G" / "ETL8G_33_unpack"
+
+    # path_label_list = create_path_label_list()
+    path_label_df = pd.DataFrame(labels, columns=["kanji"])
+
+    index_by_kanji = np.where(path_label_df["kanji"]==kanji_selected)[0][0]
+    path_to_specific_template = path_to_templates /f'0000{index_by_kanji}.png' if index_by_kanji<10 else path_to_templates /f'000{index_by_kanji}.png'
+    return path_to_specific_template
+# print(path_label_list[956])
+
+
+
+
+# kanji_list = ["木", "日", "人", "大", "水", "山", "口", "心"]  # przykład — dodaj własne
+kanji_selected = st.selectbox("Wybierz znak do ćwiczenia:", labels)
+
+
+template_path = find_path_to_image_by_index()
+
+
 
 # Template do ewaluacji (normalny obraz)
 template_eval = load_image_as_np(template_path)
 
 
-# Przygotowanie tła — ghost kanji
-ghost_bg = prepare_ghost_background(template_path, size=(256, 256), alpha=80)
-
 
 st.subheader(f"Napisz znak: {kanji_selected}")
+path_label_df = pd.DataFrame(labels, columns=["kanji"])
 
 canvas_result = st_canvas(
     fill_color="rgba(0,0,0,0)",
