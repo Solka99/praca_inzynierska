@@ -109,8 +109,6 @@ def aggregate_score(ssim_score, chamfer_score) -> float:
 
     return float(max(0.0, min(1.0, score_01)) * 100.0)
 
-
-
 def ensure_black_strokes(bin01: np.ndarray) -> np.ndarray:
     # chcemy: mało jedynek (kreski), dużo zer (tło)
     # jeśli jest odwrotnie, odwracamy
@@ -143,10 +141,6 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
 
     print("user fg%", user_bin.mean())
     print("tmpl fg%", template_bin.mean())
-
-    print("dice:", dice_score(user_bin, template_bin))
-    print("dice tol=1:", dice_tolerant(user_bin, template_bin, tol_px=1))
-    print("dice tol=2:", dice_tolerant(user_bin, template_bin, tol_px=2))
 
     s = compute_ssim(user_bin, template_bin)
     c = compute_chamfer_score(user_bin, template_bin)
