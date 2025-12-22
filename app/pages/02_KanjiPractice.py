@@ -8,41 +8,6 @@ from pathlib import Path
 import os
 from kanji_evaluation import evaluate_kanji, load_image_as_np
 
-
-# --------------------------
-# Helper: prepare ghost background
-# --------------------------
-
-def prepare_ghost_background(template_path: str, size=(256, 256), alpha: int = 80):
-    """
-    Tworzy delikatne, półprzezroczyste tło kanji ("ghost"),
-    po którym użytkownik może odrysowywać znak.
-    """
-
-    # 1. Wczytaj i konwertuj do grayscale
-    img = Image.open(template_path).convert("L")
-
-    # 2. Resize do wielkości canvasu
-    img = img.resize(size, Image.LANCZOS)
-
-    # 3. Autokontrast, żeby znak był równy
-    img = ImageOps.autocontrast(img)
-
-    # 4. Jasnoszare kanji (duch)
-    arr = np.array(img).astype(np.float32)
-    arr = 180 + (arr / 255.0) * (255 - 180)     # jasne 180–255
-    arr = arr.clip(0, 255).astype(np.uint8)
-    img_gray = Image.fromarray(arr)
-
-    # 5. Kanał alpha
-    alpha_channel = Image.new("L", size, alpha)  # 80 = delikatne 30% krycia
-
-    # 6. Składamy RGBA
-    ghost_rgba = Image.merge("RGBA", (img_gray, img_gray, img_gray, alpha_channel))
-
-    return ghost_rgba  # zwracamy jako numpy array
-
-
 # --------------------------
 # UI Page
 # --------------------------
@@ -112,16 +77,16 @@ path_label_df = pd.DataFrame(labels, columns=["kanji"])
 
 canvas_result = st_canvas(
     fill_color="rgba(0,0,0,0)",
-    stroke_width=4,
+    stroke_width=5,
     stroke_color="black",
     # background_image=ghost_bg,   # <<< TU JEST GHOST KANJI
     update_streamlit=True,
-    height=256,
-    width=256,
+    height=254,
+    width=276,
     drawing_mode="freedraw",
     key="kanji_practice_canvas",
 )
-
+st.image(template_eval, caption="Wzór", width=256)
 # --------------------------
 # Ewaluacja
 # --------------------------
@@ -142,7 +107,6 @@ if st.button("🔍 Oceń mój zapis"):
         plt.imshow(user_img, cmap='gray')
         plt.savefig("aaaaa.png")  # save instead of showing
 
-        print('shown')
 
         result = evaluate_kanji(user_img, template_eval)
         print(result)
@@ -152,7 +116,5 @@ if st.button("🔍 Oceń mój zapis"):
 
         st.write("**Szczegółowe metryki:**")
         st.write(f"- SSIM: `{result['ssim']:.3f}`")
-        st.write(f"- IoU: `{result['iou']:.3f}`")
-        st.write(f"- Hu score: `{result['hu_score']:.3f}`")
         st.write(f"- Chamfer score: `{result['chamfer_score']:.3f}`")
 

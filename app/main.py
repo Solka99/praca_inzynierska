@@ -138,7 +138,7 @@ def main():
     # Płótno do rysowania
     canvas = st_canvas(
         fill_color="#0935b8",
-        stroke_width=4,
+        stroke_width=5,
         stroke_color="#000000",
         background_color="#FFFFFF",
         height=256,

@@ -7,47 +7,43 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 
-# ---------- 1. Prosty preprocessing ----------
 
-def preprocess_image(img: np.ndarray, size=(128, 128)) -> np.ndarray:
+def preprocess_min(img: np.ndarray, size=(128, 127)) -> np.ndarray:
     """
-    Normalizuje obraz:
-    - konwersja do szarości
-    - adaptacyjny wybór BINARY vs BINARY_INV
-    - resize
-    - wynik: binarka 0/1 (0 = tło, 1 = kreska)
+    Minimalny preprocessing:
+    1) jeśli RGBA -> spłaszczenie na białe tło
+    2) grayscale
+    3) resize do (width=128, height=127)
+    4) Otsu + BINARY_INV (czarne -> 1, białe -> 0)
+    Wynik: uint8 0/1, shape (127, 128)
     """
-    # 1. Szarość
+
+    # 1) Jeśli obraz ma alfę (RGBA), zrób z niego normalny obraz na białym tle
+    if img.ndim == 3 and img.shape[2] == 4:
+        rgb = img[:, :, :3].astype(np.float32)          # kolory
+        alpha = img[:, :, 3].astype(np.float32) / 255.0 # 0..1
+        white = np.ones_like(rgb) * 255.0               # białe tło
+        img = (rgb * alpha[..., None] + white * (1 - alpha[..., None])).astype(np.uint8)
+
+    # 2) Skala szarości
     if img.ndim == 3:
-        if img.shape[2] == 4:
-            img = img[:, :, :3]
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
-        img_gray = img
+        gray = img
 
-    # 2. Threshold w dwóch wersjach
-    _, bin_normal = cv2.threshold(
-        img_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
-    _, bin_inv = cv2.threshold(
-        img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-    )
+    # 3) Resize (OpenCV: size = (width, height))
+    gray = cv2.resize(gray, size, interpolation=cv2.INTER_AREA)
 
-    bin_normal01 = (bin_normal > 0).astype(np.uint8)
-    bin_inv01 = (bin_inv > 0).astype(np.uint8)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # 3. Wybierz tę binarkę, która ma rozsądny udział "kresek"
-    FG_TARGET = 0.15  # 15% pikseli jako kreski – możesz potem zmienić
-    cand = [
-        (bin_normal01, abs(bin_normal01.mean() - FG_TARGET)),
-        (bin_inv01, abs(bin_inv01.mean() - FG_TARGET)),
-    ]
-    best_bin = min(cand, key=lambda x: x[1])[0]
+    # 4) Binarizacja: czarne kreski -> 1, białe tło -> 0
+    _, bin255 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # 4. Resize do wspólnego rozmiaru
-    best_resized = cv2.resize(best_bin, size, interpolation=cv2.INTER_NEAREST)
+    # 5) 0/255 -> 0/1
+    bin01 = (bin255 > 0).astype(np.uint8)
 
-    return best_resized
+    return bin01
+
 
 
 
@@ -61,124 +57,66 @@ def compute_ssim(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
     return float(score)  # ~[0,1]
 
 
-def compute_iou(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
-    intersection = np.logical_and(user_bin == 1, template_bin == 1).sum()
-    union = np.logical_or(user_bin == 1, template_bin == 1).sum()
-    if union == 0:
-        return 0.0
-    return float(intersection / union)  # [0,1]
 
-
-def compute_chamfer_score(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
+def compute_chamfer_score(user_bin: np.ndarray,
+                          template_bin: np.ndarray,
+                          sigma_px: float = 10.0) -> float:
     """
-    Chamfer distance – im mniejsza tym lepiej.
-    Zwracamy przeskalowany „score” w [0,1], gdzie 1 = idealne dopasowanie.
-    Prosta wersja: średnia z odległości user→template i template→user.
+    Chamfer score w [0,1], gdzie 1 = idealnie.
+    - Liczymy symetryczny Chamfer distance w pikselach (im mniejszy, tym lepiej).
+    - Zamieniamy distance -> score funkcją exp(-(d/sigma)^2).
+      sigma_px dobierz tak, żeby "OK" rysunki dawały sensowny score (np. 0.6-0.9).
     """
-    # Tło = 0, kreski = 1 → chcemy odległość od kresek
-    # distance_transform_edt liczy odległość od zer, więc odwracamy
-    dt_template = distance_transform_edt(1 - template_bin)
-    dt_user = distance_transform_edt(1 - user_bin)
 
-    # punkty kresek
-    user_points = user_bin == 1
-    template_points = template_bin == 1
+    # 1) Ujednolicenie: True = kreska
+    u = (user_bin > 0)
+    t = (template_bin > 0)
 
-    if not user_points.any() or not template_points.any():
+    if not u.any() or not t.any():
         return 0.0
 
-    # user -> template
-    d1 = dt_template[user_points].mean()
-    # template -> user
-    d2 = dt_user[template_points].mean()
+    # 2) Distance transform: odległość do najbliższej kreski w drugim obrazie
+    # DT liczy odległość do zer, więc robimy: kreski -> 0, tło -> 1
+    dt_t = distance_transform_edt(~t)  # odległość do kresek template
+    dt_u = distance_transform_edt(~u)  # odległość do kresek user
 
-    chamfer_dist = (d1 + d2) / 2.0  # im mniejsza tym lepiej
+    # 3) Symetryczny Chamfer (w px)
+    d1 = dt_t[u].mean()  # user -> template
+    d2 = dt_u[t].mean()  # template -> user
+    d = 0.5 * (d1 + d2)
 
-    # Zamiana na „score” w (0,1].
-    # Prosta funkcja monotoniczna (możesz później dostroić współczynnik 5.0).
-    score = np.exp(-0.5 * chamfer_dist)
+    print("chamfer score", d)
+
+    # 4) Distance -> score (0..1]
+    score = np.exp(-(d / sigma_px) ** 2)
     return float(score)
 
-
-def compute_hu_score(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
-    """
-    Hu moments – porównujemy kształt globalny.
-    Liczymy log10(|Hu|), potem różnicę i zamieniamy na score w [0,1].
-    """
-    # OpenCV oczekuje 0–255
-    u = (user_bin * 255).astype(np.uint8)
-    t = (template_bin * 255).astype(np.uint8)
-
-    moments_u = cv2.moments(u)
-    moments_t = cv2.moments(t)
-
-    hu_u = cv2.HuMoments(moments_u).flatten()
-    hu_t = cv2.HuMoments(moments_t).flatten()
-
-    # Skala log – standardowy trik przy Hu
-    hu_u_log = -np.sign(hu_u) * np.log10(np.abs(hu_u) + 1e-15)
-    hu_t_log = -np.sign(hu_t) * np.log10(np.abs(hu_t) + 1e-15)
-
-    diff = np.linalg.norm(hu_u_log - hu_t_log)
-
-    # Zamiana „im mniejsza różnica tym lepiej” na [0,1]
-    # Znowu prosta funkcja wygaszająca
-    score = np.exp(-0.5 * diff)
-    return float(score)
 
 
 # ---------- 3. Łączymy metryki w wynik 0–100 ----------
 
-def aggregate_score(ssim_score, iou_score, chamfer_score, hu_score) -> float:
+def aggregate_score(ssim_score, chamfer_score) -> float:
     """
     Prosta ważona średnia.
     Wagi możesz później zmienić eksperymentalnie.
     """
-    # w_ssim = 0.35
-    w_ssim = 1
-    # w_iou = 0.35
-    w_iou = 0.0
-    w_chamfer = 0.0
-    # w_hu = 0.15
-    w_hu = 0.0
+    w_ssim = 0.5
+    w_chamfer = 0.5
 
-    total = w_ssim + w_iou + w_chamfer + w_hu
+    total = w_ssim + w_chamfer
     score_01 = (w_ssim * ssim_score +
-                w_iou * iou_score +
-                w_chamfer * chamfer_score +
-                w_hu * hu_score) / total
+                w_chamfer * chamfer_score) / total
 
     return float(max(0.0, min(1.0, score_01)) * 100.0)
 
-def aggregate_score_2(ssim_score, iou_score, chamfer_score, hu_score) -> float:
-    """
-    Wersja uproszczona:
-    - ignorujemy Chamfer w końcowej ocenie (na razie),
-    - większa waga dla SSIM i Hu,
-    - IoU jako niżej ważony dodatek,
-    - na końcu nieliniowe rozciągnięcie skali.
-    """
-    w_ssim = 0.6
-    w_hu = 0.25
-    w_iou = 0.15
-    # chamfer na razie nie używany
-    # w_chamfer = 0.0
 
-    s_lin = (
-        w_ssim * ssim_score +
-        w_hu * hu_score +
-        w_iou * iou_score
-    ) / (w_ssim + w_hu + w_iou)
 
-    # zabezpieczenie
-    s_lin = max(0.0, min(1.0, s_lin))
-
-    # lekkie "podciągnięcie" wyniku
-    gamma = 0.7
-    s_final = (s_lin ** gamma) * 100.0
-
-    return float(s_final)
-
+def ensure_black_strokes(bin01: np.ndarray) -> np.ndarray:
+    # chcemy: mało jedynek (kreski), dużo zer (tło)
+    # jeśli jest odwrotnie, odwracamy
+    if bin01.mean() > 0.5:
+        bin01 = 1 - bin01
+    return bin01
 
 def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     """
@@ -187,35 +125,48 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     - robi preprocessing,
     - liczy metryki i końcowy wynik.
     """
-    user_bin = preprocess_image(user_img)
-    plt.imshow(user_bin)
-    plt.axis('off')  # Turn off axis labels
-    plt.show()
+    # user_bin = preprocess_min(user_img)
+    # plt.imshow(user_bin, cmap='gray', vmin=0, vmax=1)
+    # plt.axis('off')
+    #
+    # plt.savefig("bbbb.png")
+    #
+    #
+    #
+    # template_bin = preprocess_min(template_img)
 
-    plt.savefig("bbbb.png")  # save instead of showing
+    user_bin = preprocess_min(user_img, (128, 127))
+    user_bin = ensure_black_strokes(user_bin)
 
-    template_bin = preprocess_image(template_img)
+    template_bin = preprocess_min(template_img, (128, 127))
+    template_bin = ensure_black_strokes(template_bin)
+
+    print("user fg%", user_bin.mean())
+    print("tmpl fg%", template_bin.mean())
+
+    print("dice:", dice_score(user_bin, template_bin))
+    print("dice tol=1:", dice_tolerant(user_bin, template_bin, tol_px=1))
+    print("dice tol=2:", dice_tolerant(user_bin, template_bin, tol_px=2))
 
     s = compute_ssim(user_bin, template_bin)
-    i = compute_iou(user_bin, template_bin)
     c = compute_chamfer_score(user_bin, template_bin)
-    h = compute_hu_score(user_bin, template_bin)
 
-    final_score = aggregate_score(s, i, c, h)
+    final_score = aggregate_score(s, c)
 
-    print({
-        "ssim": s,
-        "iou": i,
-        "chamfer_score": c,
-        "hu_score": h,
-        "final_score": final_score
-    }
-)
+    print("user:", user_bin.dtype, user_bin.min(), user_bin.max(), "mean", user_bin.mean())
+    print("tmpl:", template_bin.dtype, template_bin.min(), template_bin.max(), "mean", template_bin.mean())
+
+    # print({
+    #     "ssim": s,
+    #     "iou": i,
+    #     "chamfer_score": c,
+    #     "hu_score": h,
+    #     "final_score": final_score
+    # }
+# )
     return {
         "ssim": s,
-        "iou": i,
         "chamfer_score": c,
-        "hu_score": h,
         "final_score": final_score
     }
 
