@@ -109,6 +109,23 @@ def aggregate_score(ssim_score, chamfer_score) -> float:
 
     return float(max(0.0, min(1.0, score_01)) * 100.0)
 
+
+def center_by_bbox(bin01: np.ndarray) -> np.ndarray:
+    ys, xs = np.where(bin01 > 0)
+    if len(xs) == 0:
+        return bin01
+
+    x0, x1 = xs.min(), xs.max()
+    y0, y1 = ys.min(), ys.max()
+    crop = bin01[y0:y1+1, x0:x1+1]
+
+    out = np.zeros_like(bin01)
+    h, w = crop.shape
+    oy = (out.shape[0] - h) // 2
+    ox = (out.shape[1] - w) // 2
+    out[oy:oy+h, ox:ox+w] = crop
+    return out
+
 def ensure_black_strokes(bin01: np.ndarray) -> np.ndarray:
     # chcemy: mało jedynek (kreski), dużo zer (tło)
     # jeśli jest odwrotnie, odwracamy
@@ -141,6 +158,9 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
 
     print("user fg%", user_bin.mean())
     print("tmpl fg%", template_bin.mean())
+
+    user_bin = center_by_bbox(user_bin)
+    template_bin = center_by_bbox(template_bin)
 
     s = compute_ssim(user_bin, template_bin)
     c = compute_chamfer_score(user_bin, template_bin)
