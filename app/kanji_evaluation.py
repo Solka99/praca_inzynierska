@@ -85,7 +85,7 @@ def compute_chamfer_score(user_bin: np.ndarray,
     d2 = dt_u[t].mean()  # template -> user
     d = 0.5 * (d1 + d2)
 
-    print("chamfer score", d)
+    # print("chamfer score", d)
 
     # 4) Distance -> score (0..1]
     score = np.exp(-(d / sigma_px) ** 2)
@@ -205,15 +205,15 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     template_bin = preprocess_min(template_img, (128, 127))
     template_bin = ensure_black_strokes(template_bin)
 
-    print("user fg%", user_bin.mean())
-    print("tmpl fg%", template_bin.mean())
+    # print("user fg%", user_bin.mean())
+    # print("tmpl fg%", template_bin.mean())
 
     user_bin = center_by_bbox(user_bin)
     template_bin = center_by_bbox(template_bin)
 
     pen = stroke_penalty(user_bin, template_bin)
 
-    print("stroke penalty:", pen)
+    # print("stroke penalty:", pen)
 
 
     s = compute_ssim(user_bin, template_bin)
@@ -222,8 +222,8 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     final_score = aggregate_score(s, c)
     final_score=final_score*pen
 
-    print("user:", user_bin.dtype, user_bin.min(), user_bin.max(), "mean", user_bin.mean())
-    print("tmpl:", template_bin.dtype, template_bin.min(), template_bin.max(), "mean", template_bin.mean())
+    # print("user:", user_bin.dtype, user_bin.min(), user_bin.max(), "mean", user_bin.mean())
+    # print("tmpl:", template_bin.dtype, template_bin.min(), template_bin.max(), "mean", template_bin.mean())
 
     # print({
     #     "ssim": s,
