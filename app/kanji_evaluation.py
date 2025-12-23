@@ -133,22 +133,71 @@ def ensure_black_strokes(bin01: np.ndarray) -> np.ndarray:
         bin01 = 1 - bin01
     return bin01
 
+def has_ximgproc() -> bool:
+    return hasattr(cv2, "ximgproc") and hasattr(cv2.ximgproc, "thinning")
+
+def skeleton01(bin01: np.ndarray) -> np.ndarray:
+    """
+    Zwraca szkielet 0/1 (1-pikselowe kreski).
+    Wymaga opencv-contrib-python (cv2.ximgproc.thinning).
+    """
+    sk = cv2.ximgproc.thinning((bin01 * 255).astype(np.uint8))
+    return (sk > 0).astype(np.uint8)
+
+def count_components(bin01: np.ndarray) -> int:
+    """Liczba spójnych składowych (bez tła)."""
+    n, _ = cv2.connectedComponents(bin01.astype(np.uint8))
+    return int(n - 1)
+
+def count_endpoints(skel01: np.ndarray) -> int:
+    """
+    Endpoint = piksel szkieletu mający dokładnie 1 sąsiada (8-sąsiedztwo).
+    Daje sensowny sygnał: więcej bazgrołów -> więcej endpointów,
+    brak kresek -> mniej endpointów.
+    """
+    s = skel01.astype(np.uint8)
+    kernel = np.array([[1,1,1],
+                       [1,0,1],
+                       [1,1,1]], dtype=np.uint8)
+    neigh = cv2.filter2D(s, -1, kernel, borderType=cv2.BORDER_CONSTANT)
+    return int(np.logical_and(s == 1, neigh == 1).sum())
+
+def stroke_penalty(user_bin01: np.ndarray, tmpl_bin01: np.ndarray) -> float:
+    """
+    Kara za brak/dodatkowe kreski: wynik w [0,1], gdzie 1 = brak kary.
+    Jak interpretować penalty
+
+    ~0.8 – 1.0 → liczba/struktura kresek podobna
+
+    ~0.5 – 0.8 → coś nie gra (braki albo dodatkowe kreski)
+
+    <0.5 → mocno różni się „kreskowo”
+    """
+    if not has_ximgproc():
+        # jeśli nie masz opencv-contrib, nie da się prosto zrobić szkieletyzacji
+        return 1.0
+
+    u_sk = skeleton01(user_bin01)
+    t_sk = skeleton01(tmpl_bin01)
+
+    u_cc = count_components(u_sk)
+    t_cc = count_components(t_sk)
+
+    u_end = count_endpoints(u_sk)
+    t_end = count_endpoints(t_sk)
+
+    # różnice względne (0=idealnie)
+    cc_diff = abs(u_cc - t_cc) / max(t_cc, 1)
+    end_diff = abs(u_end - t_end) / max(t_end, 1)
+
+    # prosta kombinacja: endpoints ważniejsze
+    penalty = 1.0 - (0.3 * cc_diff + 0.7 * end_diff)
+    return float(np.clip(penalty, 0.0, 1.0))
+
+
 def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
-    """
-    Główna funkcja:
-    - przyjmuje obrazy (np. z pliku albo z canvasu),
-    - robi preprocessing,
-    - liczy metryki i końcowy wynik.
-    """
-    # user_bin = preprocess_min(user_img)
-    # plt.imshow(user_bin, cmap='gray', vmin=0, vmax=1)
-    # plt.axis('off')
-    #
-    # plt.savefig("bbbb.png")
-    #
-    #
-    #
-    # template_bin = preprocess_min(template_img)
+
+
 
     user_bin = preprocess_min(user_img, (128, 127))
     user_bin = ensure_black_strokes(user_bin)
@@ -162,10 +211,16 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     user_bin = center_by_bbox(user_bin)
     template_bin = center_by_bbox(template_bin)
 
+    pen = stroke_penalty(user_bin, template_bin)
+
+    print("stroke penalty:", pen)
+
+
     s = compute_ssim(user_bin, template_bin)
     c = compute_chamfer_score(user_bin, template_bin)
 
     final_score = aggregate_score(s, c)
+    final_score=final_score*pen
 
     print("user:", user_bin.dtype, user_bin.min(), user_bin.max(), "mean", user_bin.mean())
     print("tmpl:", template_bin.dtype, template_bin.min(), template_bin.max(), "mean", template_bin.mean())
@@ -181,6 +236,7 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     return {
         "ssim": s,
         "chamfer_score": c,
+        "stroke_penalty": pen,
         "final_score": final_score
     }
 
