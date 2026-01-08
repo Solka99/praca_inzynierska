@@ -3,9 +3,9 @@ import requests
 url = "https://kanjialive-api.p.rapidapi.com/api/public/kanji/"
 
 headers = {
-    "X-RapidAPI-Key": "98bb2f6e65msh411cec95c4f101bp10b84cjsn96877355acad",
+    "X-RapidAPI-Key": "", #do uzupełnienia
 
-    "X-RapidAPI-Host": "kanjialive-api.p.rapidapi.com"
+    "X-RapidAPI-Host": "" #do uzupełnienia
 }
 
 def get_kanji_info(kanji):
@@ -49,10 +49,8 @@ def show_kanji(data: dict):
     kanji = data['kanji']
     examples = data["examples"]
 
-    # Główne kolumny: znak | info | przykłady
     col_char, col_info, col_examples = st.columns([1, 1.3, 1.5])
 
-    # ===== LEWA KOLUMNA – ZNAK + WIDEO STROKES =====
     with col_char:
         st.markdown("#### Kanji")
         st.markdown(
@@ -73,10 +71,8 @@ def show_kanji(data: dict):
                     """,
             unsafe_allow_html=True
         )
-        # albo:
-        # st.video(kanji["video"]["mp4"])
 
-    # ===== ŚRODKOWA KOLUMNA – INFO O KANJI =====
+
     with col_info:
         st.markdown("#### Szczegóły")
 
@@ -92,16 +88,13 @@ def show_kanji(data: dict):
 
 
 
-    # ===== PRAWA KOLUMNA – PRZYKŁADY ZDAN =====
     with col_examples:
         st.markdown("#### Examples")
 
         for ex in examples[:5]:
             st.markdown(f"**{ex['japanese']}**")
             st.write(ex["meaning"]["english"])
-            # # opcjonalnie audio
-            # st.audio(ex["audio"]["mp3"])
-            # st.markdown("---")
+
 
 # kanji = '火'
 # get_kanji_info(kanji)

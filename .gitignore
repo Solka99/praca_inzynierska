@@ -1,0 +1,5 @@
+app/__pycache__/
+app/classification/__pycache__/
+app/drawing/__pycache__/
+app/evaluation/__pycache__/
+app/kanji_info/__pycache__/
