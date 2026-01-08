@@ -9,12 +9,27 @@ headers = {
 }
 
 def get_kanji_info(kanji):
-
+    hiragana_list = [
+        'あ', 'い', 'う', 'え', 'お',
+        'か', 'き', 'く', 'け', 'こ',
+        'さ', 'し', 'す', 'せ', 'そ',
+        'た', 'ち', 'つ', 'て', 'と',
+        'な', 'に', 'ぬ', 'ね', 'の',
+        'は', 'ひ', 'ふ', 'へ', 'ほ',
+        'ま', 'mi', 'む', 'め', 'も',
+        'や', 'ゆ', 'よ',
+        'ら', 'り', 'る', 'れ', 'ろ',
+        'わ', 'を', 'ん',
+        'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ',
+        'っ', 'ゃ', 'ゅ', 'ょ', 'ゎ'
+    ]
+    if kanji in hiragana_list:
+        return 0
     response = requests.get(url+kanji, headers=headers)
 
     if response.status_code == 200:
         data = response.json()
-        # print(data)
+        print(data)
         return data
 
     else:
@@ -25,9 +40,13 @@ def get_kanji_info(kanji):
 import streamlit as st
 
 def show_kanji(data: dict):
-    kanji = data["kanji"]
-    # radical = data["radical"]
-    refs = data["references"]
+    if not data:
+        st.write("Nie ma dodatkowych informacji o znakach hiragana.")
+        return 0
+    print(type(data))
+    print(data.keys())
+
+    kanji = data['kanji']
     examples = data["examples"]
 
     # Główne kolumny: znak | info | przykłady
@@ -63,7 +82,6 @@ def show_kanji(data: dict):
 
         st.write(f"**Meaning:** {kanji['meaning']['english']}")
         st.write(f"**Strokes:** {kanji['strokes']['count']}")
-        st.write(f"**Grade:** {refs.get('grade', '–')}")
         st.write("")
         st.markdown("---")
         st.write("**Onyomi**")
@@ -78,7 +96,7 @@ def show_kanji(data: dict):
     with col_examples:
         st.markdown("#### Examples")
 
-        for ex in examples:
+        for ex in examples[:5]:
             st.markdown(f"**{ex['japanese']}**")
             st.write(ex["meaning"]["english"])
             # # opcjonalnie audio

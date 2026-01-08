@@ -6,7 +6,7 @@ from PIL import Image, ImageOps
 import streamlit as st
 import pandas as pd
 import numpy as np
-from kanji_evaluation import evaluate_kanji, load_image_as_np
+from kanji_evaluation import evaluate_kanji, load_image_as_np, preprocess_min
 from model_architecture import load_model, predict
 import torchvision.transforms as T
 
@@ -15,11 +15,6 @@ import torchvision.transforms as T
 # --------------------------
 
 st.title("Kanji Practice – Ćwiczenie pisania znaków")
-
-st.write("""
-Ten moduł pozwala ćwiczyć ręczne odrysowywanie znaków kanji.
-Po narysowaniu znaku możesz uzyskać ocenę opartą na metrykach podobieństwa.
-""")
 
 # --------------------------
 # Wybór kanji
@@ -54,7 +49,14 @@ def find_path_to_image_by_index():
     path_label_df = pd.DataFrame(labels, columns=["kanji"])
 
     index_by_kanji = np.where(path_label_df["kanji"]==kanji_selected)[0][0]
-    path_to_specific_template = path_to_templates /f'0000{index_by_kanji}.png' if index_by_kanji<10 else path_to_templates /f'000{index_by_kanji}.png'
+    if index_by_kanji<10:
+        path_to_specific_template = path_to_templates / f'0000{index_by_kanji}.png'
+    elif index_by_kanji>=10 and index_by_kanji<100:
+        path_to_specific_template = path_to_templates / f'000{index_by_kanji}.png'
+    else:
+        path_to_specific_template = path_to_templates / f'00{index_by_kanji}.png'
+
+    # path_to_specific_template = path_to_templates /f'0000{index_by_kanji}.png' if index_by_kanji<10 else path_to_templates /f'000{index_by_kanji}.png'
     return path_to_specific_template
 # print(path_label_list[956])
 
@@ -167,9 +169,9 @@ with col_draw:
             st.metric("Ocena końcowa", f"{result['final_score']:.1f} / 100")
 
             st.write("**Szczegółowe metryki: [Im metryki są bliższe 1 tym lepiej]**")
-            st.write(f"- SSIM: `{result['ssim']:.3f}`")
-            st.write(f"- Chamfer score: `{result['chamfer_score']:.3f}`")
-            st.write(f"- Stroke penalty: `{result['stroke_penalty']:.3f}`")
+            # st.write(f"- SSIM: {result['ssim']:.3f}")
+            st.write(f"- Chamfer score: {result['chamfer_score']:.3f}")
+            st.write(f"- Stroke penalty: {result['stroke_penalty']:.3f}")
 
             img = Image.fromarray(user_img[:, :, :3])
 

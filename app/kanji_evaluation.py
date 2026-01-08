@@ -4,7 +4,6 @@ import numpy as np
 from skimage.metrics import structural_similarity as ssim
 from scipy.ndimage import distance_transform_edt
 from PIL import Image
-import matplotlib.pyplot as plt
 
 
 
@@ -17,13 +16,18 @@ def preprocess_min(img: np.ndarray, size=(128, 127)) -> np.ndarray:
     4) Otsu + BINARY_INV (czarne -> 1, białe -> 0)
     Wynik: uint8 0/1, shape (127, 128)
     """
-
-    # 1) Jeśli obraz ma alfę (RGBA), zrób z niego normalny obraz na białym tle
+    print("shape:", img.shape)
     if img.ndim == 3 and img.shape[2] == 4:
-        rgb = img[:, :, :3].astype(np.float32)          # kolory
-        alpha = img[:, :, 3].astype(np.float32) / 255.0 # 0..1
-        white = np.ones_like(rgb) * 255.0               # białe tło
-        img = (rgb * alpha[..., None] + white * (1 - alpha[..., None])).astype(np.uint8)
+        print("alpha min/max:", img[:, :, 3].min(), img[:, :, 3].max())
+
+    #
+    # # 1) Jeśli obraz ma alfę (RGBA), zrób z niego normalny obraz na białym tle
+    # if img.ndim == 3 and img.shape[2] == 4:
+    #     print('alfa')
+    #     rgb = img[:, :, :3].astype(np.float32)          # kolory
+    #     alpha = img[:, :, 3].astype(np.float32) / 255.0 # 0..1
+    #     white = np.ones_like(rgb) * 255.0               # białe tło
+    #     img = (rgb * alpha[..., None] + white * (1 - alpha[..., None])).astype(np.uint8)
 
     # 2) Skala szarości
     if img.ndim == 3:
@@ -46,9 +50,6 @@ def preprocess_min(img: np.ndarray, size=(128, 127)) -> np.ndarray:
 
 
 
-
-# ---------- 2. Metryki podobieństwa ----------
-
 def compute_ssim(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
     # SSIM potrzebuje wartości 0–255
     u = (user_bin * 255).astype(np.uint8)
@@ -60,7 +61,7 @@ def compute_ssim(user_bin: np.ndarray, template_bin: np.ndarray) -> float:
 
 def compute_chamfer_score(user_bin: np.ndarray,
                           template_bin: np.ndarray,
-                          sigma_px: float = 10.0) -> float:
+                          sigma_px: float = 5.0) -> float:
     """
     Chamfer score w [0,1], gdzie 1 = idealnie.
     - Liczymy symetryczny Chamfer distance w pikselach (im mniejszy, tym lepiej).
@@ -89,6 +90,7 @@ def compute_chamfer_score(user_bin: np.ndarray,
 
     # 4) Distance -> score (0..1]
     score = np.exp(-(d / sigma_px) ** 2)
+    # score = score ** 1.2
     return float(score)
 
 
@@ -100,8 +102,8 @@ def aggregate_score(ssim_score, chamfer_score) -> float:
     Prosta ważona średnia.
     Wagi możesz później zmienić eksperymentalnie.
     """
-    w_ssim = 0.5
-    w_chamfer = 0.5
+    w_ssim = 0
+    w_chamfer = 1
 
     total = w_ssim + w_chamfer
     score_01 = (w_ssim * ssim_score +
@@ -162,6 +164,17 @@ def count_endpoints(skel01: np.ndarray) -> int:
     neigh = cv2.filter2D(s, -1, kernel, borderType=cv2.BORDER_CONSTANT)
     return int(np.logical_and(s == 1, neigh == 1).sum())
 
+def bridge_gaps(bin01: np.ndarray, k: int = 3, it: int = 1) -> np.ndarray:
+    """
+    Skleja mikro-przerwy i 'prawie styki' w kreskach.
+    k=3 zwykle wystarcza dla 128x128; zwiększ do 5 jeśli trzeba.
+    """
+    b = (bin01.astype(np.uint8) * 255)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    b = cv2.morphologyEx(b, cv2.MORPH_CLOSE, kernel, iterations=it)
+    return (b > 0).astype(np.uint8)
+
+
 def stroke_penalty(user_bin01: np.ndarray, tmpl_bin01: np.ndarray) -> float:
     """
     Kara za brak/dodatkowe kreski: wynik w [0,1], gdzie 1 = brak kary.
@@ -177,8 +190,10 @@ def stroke_penalty(user_bin01: np.ndarray, tmpl_bin01: np.ndarray) -> float:
         # jeśli nie masz opencv-contrib, nie da się prosto zrobić szkieletyzacji
         return 1.0
 
-    u_sk = skeleton01(user_bin01)
-    t_sk = skeleton01(tmpl_bin01)
+    u = bridge_gaps(user_bin01, k=4, it=1)
+    t = bridge_gaps(tmpl_bin01, k=4, it=1)
+    u_sk = skeleton01(u)
+    t_sk = skeleton01(t)
 
     u_cc = count_components(u_sk)
     t_cc = count_components(t_sk)
@@ -190,8 +205,7 @@ def stroke_penalty(user_bin01: np.ndarray, tmpl_bin01: np.ndarray) -> float:
     cc_diff = abs(u_cc - t_cc) / max(t_cc, 1)
     end_diff = abs(u_end - t_end) / max(t_end, 1)
 
-    # prosta kombinacja: endpoints ważniejsze
-    penalty = 1.0 - (0.3 * cc_diff + 0.7 * end_diff)
+    penalty = 1.0 - (0.5 * cc_diff + 0.5 * end_diff)
     return float(np.clip(penalty, 0.0, 1.0))
 
 
@@ -208,7 +222,10 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     # print("user fg%", user_bin.mean())
     # print("tmpl fg%", template_bin.mean())
 
+    cv2.imwrite("before.png", user_bin * 255)
     user_bin = center_by_bbox(user_bin)
+
+    cv2.imwrite("after_centered.png", user_bin * 255)
     template_bin = center_by_bbox(template_bin)
 
     pen = stroke_penalty(user_bin, template_bin)
@@ -234,7 +251,6 @@ def evaluate_kanji(user_img: np.ndarray, template_img: np.ndarray) -> dict:
     # }
 # )
     return {
-        "ssim": s,
         "chamfer_score": c,
         "stroke_penalty": pen,
         "final_score": final_score
@@ -250,3 +266,10 @@ def load_image_as_np(path: str) -> np.ndarray:
     """
     img = Image.open(path).convert("RGB")
     return np.array(img)
+
+def preprocess_whole(img: np.ndarray) -> np.ndarray:
+    img= preprocess_min(img,(128, 127))
+    img=ensure_black_strokes(img)
+    img=center_by_bbox(img)
+    return img
+

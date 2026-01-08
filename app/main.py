@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 # from user_accuracy import preprocess_kanji
 from app_helpers.kanji_alive_connection import get_kanji_info, show_kanji
-from model_architecture import CNN_Improved, load_model, load_labels
+from model_architecture import CNN_Improved, load_model, load_labels, predict
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
@@ -100,57 +100,57 @@ def pil_to_tensor2(img_pil):
     input_tensor = transform(img).unsqueeze(0)  # shape: [1, 64, 64]
     return input_tensor
 
-def pil_to_tensor2_debug(img_pil, prefix="debug"):
-    img = img_pil.convert("L")
-    img = img.point(lambda x: 255 - x)
-    # 1️⃣ ZAPIS: po konwersji do grayscale
-    img.save(f"{prefix}_01_gray.png")
+# def pil_to_tensor2_debug(img_pil, prefix="debug"):
+#     img = img_pil.convert("L")
+#     img = img.point(lambda x: 255 - x)
+#     # 1️⃣ ZAPIS: po konwersji do grayscale
+#     img.save(f"{prefix}_01_gray.png")
+#
+#     resize = T.Resize((64, 64))
+#     img_resized = resize(img)
+#
+#     # 2️⃣ ZAPIS: po resize (TO JEST KLUCZOWE)
+#     img_resized.save(f"{prefix}_02_resized.png")
+#
+#     to_tensor = T.ToTensor()
+#     tensor = to_tensor(img_resized)  # [1,64,64]
+#
+#     # 3️⃣ ZAPIS: tensor → obraz (PRZED normalizacją)
+#     img_from_tensor = T.ToPILImage()(tensor)
+#     img_from_tensor.save(f"{prefix}_03_tensor_before_norm.png")
+#
+#     normalize = T.Normalize(mean=[0.5], std=[0.5])
+#     tensor_norm = normalize(tensor)
+#
+#     # 4️⃣ ZAPIS: tensor → obraz (PO normalizacji)
+#     # cofamy normalizację, żeby dało się zapisać
+#     tensor_denorm = tensor_norm * 0.5 + 0.5
+#     img_after_norm = T.ToPILImage()(tensor_denorm.clamp(0, 1))
+#     img_after_norm.save(f"{prefix}_04_tensor_after_norm.png")
+#
+#     # batch dim
+#     return tensor_norm.unsqueeze(0)  # [1,1,64,64]
 
-    resize = T.Resize((64, 64))
-    img_resized = resize(img)
 
-    # 2️⃣ ZAPIS: po resize (TO JEST KLUCZOWE)
-    img_resized.save(f"{prefix}_02_resized.png")
-
-    to_tensor = T.ToTensor()
-    tensor = to_tensor(img_resized)  # [1,64,64]
-
-    # 3️⃣ ZAPIS: tensor → obraz (PRZED normalizacją)
-    img_from_tensor = T.ToPILImage()(tensor)
-    img_from_tensor.save(f"{prefix}_03_tensor_before_norm.png")
-
-    normalize = T.Normalize(mean=[0.5], std=[0.5])
-    tensor_norm = normalize(tensor)
-
-    # 4️⃣ ZAPIS: tensor → obraz (PO normalizacji)
-    # cofamy normalizację, żeby dało się zapisać
-    tensor_denorm = tensor_norm * 0.5 + 0.5
-    img_after_norm = T.ToPILImage()(tensor_denorm.clamp(0, 1))
-    img_after_norm.save(f"{prefix}_04_tensor_after_norm.png")
-
-    # batch dim
-    return tensor_norm.unsqueeze(0)  # [1,1,64,64]
-
-
-def predict(model, img_pil):
-    kanji_list = []
-    probs_list = []
-    with torch.no_grad():
-        x = pil_to_tensor2_debug(img_pil)
-        logits = model(x) #surowe wyjścia sieci neuronowej
-        probs = F.softmax(logits, dim=1).cpu().numpy()[0] #Softmax to funkcja, która przekształca liczby na rozkład prawdopodobieństwa (suma = 1)
-        # idx = int(np.argmax(probs))
-        idx_array = np.argsort(probs)
-        idx_array = idx_array[-3:]
-        idx_array = idx_array[::-1]
-        print(len(idx_array))
-        print(type(idx_array))
-        for idx in idx_array:
-            kanji = CLASS_TO_KANJI[idx] if idx < len(CLASS_TO_KANJI) else f"cls_{idx}"
-            kanji_list.append(kanji)
-            probs_list.append(float(probs[idx]))
-        # kanji = CLASS_TO_KANJI[idx] if idx < len(CLASS_TO_KANJI) else f"cls_{idx}"
-        return kanji_list, probs_list
+# def predict(model, img_pil):
+#     kanji_list = []
+#     probs_list = []
+#     with torch.no_grad():
+#         x = pil_to_tensor2_debug(img_pil)
+#         logits = model(x) #surowe wyjścia sieci neuronowej
+#         probs = F.softmax(logits, dim=1).cpu().numpy()[0] #Softmax to funkcja, która przekształca liczby na rozkład prawdopodobieństwa (suma = 1)
+#         # idx = int(np.argmax(probs))
+#         idx_array = np.argsort(probs)
+#         idx_array = idx_array[-3:]
+#         idx_array = idx_array[::-1]
+#         print(len(idx_array))
+#         print(type(idx_array))
+#         for idx in idx_array:
+#             kanji = CLASS_TO_KANJI[idx] if idx < len(CLASS_TO_KANJI) else f"cls_{idx}"
+#             kanji_list.append(kanji)
+#             probs_list.append(float(probs[idx]))
+#         # kanji = CLASS_TO_KANJI[idx] if idx < len(CLASS_TO_KANJI) else f"cls_{idx}"
+#         return kanji_list, probs_list
 
 
 def save_kanji_to_json(kanji):
@@ -199,9 +199,13 @@ def main():
         plt.imshow(canvas.image_data, cmap='gray')
         plt.savefig("przed.png")
         img = Image.fromarray(canvas.image_data[:, :, :3].astype("uint8"))
+
         kanji_list, prob_list = predict(model, img)
-        for k,p in zip(kanji_list, prob_list):
-            st.success(f"Rozpoznano: **{k}** (pewność {p:.2f})")
+        st.success(f"Rozpoznano znak: **{kanji_list[0]}**")
+        # for num, kanji in enumerate(kanji_list):
+        #     st.success(f"Rozpoznano na miejscu {num+1}: **{kanji}**")
+        # for k,p in zip(kanji_list, prob_list):
+        #     st.success(f"Rozpoznano: **{k}**")
         # st.image(img, caption="Twój rysunek", width=128)
 
 
