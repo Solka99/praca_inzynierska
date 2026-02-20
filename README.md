@@ -7,13 +7,13 @@ Aplikacja umożliwia:
 - ocenę jakości rysunku (wynik 0–100),
 - prezentację informacji o rozpoznanym znaku.
 
-## Struktura projektu (wysoki poziom)
+## Struktura projektu
 
 Aplikacja została podzielona na moduły:
-1. **Moduł rysowania znaków** – interaktywny canvas.
-2. **Moduł klasyfikacji znaków** – predykcja klasy kanji przy użyciu modelu CNN.
-3. **Moduł oceny jakości rysunku** – obliczanie miar podobieństwa i wynik 0–100.
-4. **Moduł informacji o znaku** – pobieranie danych o kanji z KanjiAlive API.
+1. **Moduł rysowania znaków** - interaktywny canvas.
+2. **Moduł klasyfikacji znaków** - predykcja klasy kanji przy użyciu modelu CNN.
+3. **Moduł oceny jakości rysunku** - obliczanie miar podobieństwa i wynik 0-100.
+4. **Moduł informacji o znaku** - pobieranie danych o kanji z KanjiAlive API.
 
 ## Wymagania
 
